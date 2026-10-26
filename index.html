@@ -1,708 +1,541 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rainy Night Convenience Store - Assembly Animation</title>
+  <title>雨夜便利店 · 微缩街角</title>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background-color: #0a0f1a;
-    }
-    canvas {
-      display: block;
+    body { margin: 0; overflow: hidden; background: #0b0e14; }
+    canvas { display: block; }
+    #err {
+      position: fixed; top: 10px; left: 10px; right: 10px;
+      color: #ff7777; background: rgba(0,0,0,0.7);
+      font: 14px/1.5 monospace; padding: 12px; white-space: pre-wrap;
+      display: none; z-index: 999; border-radius: 6px;
     }
   </style>
 </head>
 <body>
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+  <div id="err"></div>
+
+  <!-- 使用经典全局脚本方式，避免 importmap 兼容问题 -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script>
+  (function () {
+    try {
+      if (typeof THREE === 'undefined') {
+        throw new Error('Three.js 未能加载，请检查网络是否能访问 cdn.jsdelivr.net');
       }
-    }
-  </script>
 
-  <script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+      // ========== 基础 ==========
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b0e14);
+      scene.fog = new THREE.Fog(0x0b0e14, 25, 65);
 
-    // ========== 基础设置 ==========
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0e14);
-    scene.fog = new THREE.Fog(0x0b0e14, 25, 65);
+      const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000);
+      camera.position.set(14, 9, 20);
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(14, 9, 20);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
-    document.body.appendChild(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 2.5, 0);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2.2;
-    controls.minDistance = 6;
-    controls.maxDistance = 40;
-    controls.update();
-
-    // ========== 灯光 ==========
-    const ambientLight = new THREE.AmbientLight(0x404c6b, 0.55);
-    scene.add(ambientLight);
-
-    const streetLight1 = new THREE.PointLight(0x7d9cd6, 0.8, 30);
-    streetLight1.position.set(5, 8, 5);
-    scene.add(streetLight1);
-
-    const streetLight2 = new THREE.PointLight(0x7d9cd6, 0.6, 25);
-    streetLight2.position.set(-6, 7, -4);
-    scene.add(streetLight2);
-
-    const storeLight1 = new THREE.PointLight(0xffdd99, 1.2, 15);
-    storeLight1.position.set(0, 4, 1.5);
-    scene.add(storeLight1);
-
-    const storeLight2 = new THREE.PointLight(0xffaa66, 0.9, 12);
-    storeLight2.position.set(-2, 4, -1);
-    scene.add(storeLight2);
-
-    const storeLight3 = new THREE.PointLight(0xffaa66, 0.9, 12);
-    storeLight3.position.set(2.5, 4, -1);
-    scene.add(storeLight3);
-
-    const signLight = new THREE.PointLight(0xffaa55, 0.7, 10);
-    signLight.position.set(1.5, 4.5, 3.2);
-    scene.add(signLight);
-
-    const backLight = new THREE.DirectionalLight(0x556688, 0.4);
-    backLight.position.set(-5, 5, -8);
-    scene.add(backLight);
-
-    const fillLight = new THREE.DirectionalLight(0xccddff, 0.15);
-    fillLight.position.set(2, 3, 6);
-    scene.add(fillLight);
-
-    // ========== 动画辅助 ==========
-    // 每个元素记录一个 userData.appearTime (秒)，模型从0开始出现
-    const appearObjects = [];
-    let assemblyStart = 0;
-    const ASSEMBLY_DURATION = 4.0; // 总组装时长（秒）
-    let assemblyActive = true;
-    const clock = new THREE.Clock();
-
-    // 辅助函数：注册出现动画
-    function registerAppear(object, delay, duration = 0.8, dropHeight = 1.5) {
-      object.userData.appear = {
-        delay: delay,
-        duration: duration,
-        dropHeight: dropHeight,
-        originalY: object.position.y,
-        originalScale: object.scale.clone(),
-        originalRotX: object.rotation.x,
-        originalRotY: object.rotation.y,
-        originalRotZ: object.rotation.z
-      };
-      // 初始状态隐藏（透明、下沉、缩小）
-      object.position.y = object.userData.appear.originalY - dropHeight;
-      object.scale.set(0.01, 0.01, 0.01);
-      object.visible = true;
-      appearObjects.push(object);
-    }
-
-    // ========== 底座 ==========
-    const baseSize = 14;
-    const baseGroup = new THREE.Group();
-    scene.add(baseGroup);
-
-    const baseGeo = new THREE.BoxGeometry(baseSize, 0.3, baseSize);
-    const baseMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1e28, roughness: 0.3, metalness: 0.2,
-      emissive: new THREE.Color(0x0a0c10), emissiveIntensity: 0.2
-    });
-    const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.set(0, -0.15, 0);
-    base.receiveShadow = true;
-    base.castShadow = true;
-    baseGroup.add(base);
-
-    // 底座描边
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0x3a4a6a });
-    const edgePoints = [
-      [-baseSize/2, 0.02, -baseSize/2], [baseSize/2, 0.02, -baseSize/2],
-      [baseSize/2, 0.02, baseSize/2], [-baseSize/2, 0.02, baseSize/2],
-      [-baseSize/2, 0.02, -baseSize/2]
-    ].map(p => new THREE.Vector3(p[0], p[1], p[2]));
-    const edgeGeometry = new THREE.BufferGeometry().setFromPoints(edgePoints);
-    const edgeLine = new THREE.Line(edgeGeometry, edgeMat);
-    baseGroup.add(edgeLine);
-
-    // 注册底座出现
-    registerAppear(baseGroup, 0.0, 1.0, 2.0);
-    // 但底座是地面，不应该从下沉出现太奇怪，重新调整：让底座从y=-3上升
-    baseGroup.userData.appear.originalY = 0;
-    baseGroup.position.y = -3;
-    baseGroup.scale.set(0.01, 0.01, 0.01);
-
-    // ========== 路面细节 ==========
-    const roadGroup = new THREE.Group();
-    scene.add(roadGroup);
-
-    // 斑马线
-    const stripeMat = new THREE.MeshStandardMaterial({
-      color: 0xaaccff, emissive: new THREE.Color(0x224466), emissiveIntensity: 0.3,
-      transparent: true, opacity: 0.35, roughness: 0.2, metalness: 0.1
-    });
-    for (let i = -1; i <= 1; i++) {
-      const stripeGeo = new THREE.BoxGeometry(1.8, 0.02, 0.25);
-      const stripe = new THREE.Mesh(stripeGeo, stripeMat);
-      stripe.position.set(i * 2.5, 0.02, 3.5);
-      stripe.rotation.y = 0.2;
-      roadGroup.add(stripe);
-    }
-
-    // 排水沟
-    const drainMat = new THREE.MeshStandardMaterial({ color: 0x445566, roughness: 0.7, metalness: 0.5 });
-    const drain = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.6), drainMat);
-    drain.position.set(4.5, 0.03, -4);
-    roadGroup.add(drain);
-
-    // 积水
-    const puddleMat = new THREE.MeshStandardMaterial({
-      color: 0x88aadd, emissive: new THREE.Color(0x112233), emissiveIntensity: 0.6,
-      transparent: true, opacity: 0.25, roughness: 0.1, metalness: 0.8
-    });
-    const puddlePositions = [[-3, 0.02, 2.5], [2.5, 0.02, -2], [4, 0.02, 4], [-4.5, 0.02, -3], [0.5, 0.02, 4.5]];
-    puddlePositions.forEach(pos => {
-      const puddleGeo = new THREE.CircleGeometry(0.7 + Math.random()*0.5, 8);
-      const puddle = new THREE.Mesh(puddleGeo, puddleMat);
-      puddle.position.set(pos[0], pos[1], pos[2]);
-      puddle.rotation.x = -Math.PI / 2;
-      roadGroup.add(puddle);
-    });
-
-    // 停车位标线
-    const parkLineMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, transparent: true, opacity: 0.4 });
-    const parkLine1 = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.02, 0.1), parkLineMat);
-    parkLine1.position.set(-1.0, 0.03, -5.0);
-    roadGroup.add(parkLine1);
-    const parkLine2 = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.02, 0.1), parkLineMat);
-    parkLine2.position.set(1.0, 0.03, -5.0);
-    roadGroup.add(parkLine2);
-
-    registerAppear(roadGroup, 0.2, 0.6, 0.5);
-
-    // ========== 便利店建筑 ==========
-    const storeGroup = new THREE.Group();
-    scene.add(storeGroup);
-
-    // 材质
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.5, emissive: new THREE.Color(0x222222), emissiveIntensity: 0.1 });
-    const wallDarkMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6 });
-    const glassMat = new THREE.MeshStandardMaterial({
-      color: 0xaaccff, transparent: true, opacity: 0.25, roughness: 0.1, metalness: 0.1,
-      emissive: new THREE.Color(0x112233), emissiveIntensity: 0.3, side: THREE.DoubleSide
-    });
-
-    // 墙体
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(6, 3.5, 0.3), wallDarkMat);
-    backWall.position.set(0, 1.75, -2.5);
-    backWall.castShadow = true;
-    backWall.receiveShadow = true;
-    storeGroup.add(backWall);
-
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.5, 5), wallMat);
-    leftWall.position.set(-3, 1.75, 0);
-    leftWall.castShadow = true;
-    leftWall.receiveShadow = true;
-    storeGroup.add(leftWall);
-
-    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.5, 5), wallMat);
-    rightWall.position.set(3, 1.75, 0);
-    rightWall.castShadow = true;
-    rightWall.receiveShadow = true;
-    storeGroup.add(rightWall);
-
-    // 屋顶
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.7, emissive: new THREE.Color(0x111111), emissiveIntensity: 0.1 });
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.2, 5.2), roofMat);
-    roof.position.set(0, 3.6, 0);
-    roof.castShadow = true;
-    roof.receiveShadow = true;
-    storeGroup.add(roof);
-
-    // 前玻璃窗
-    const glassLeft = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.8, 0.1), glassMat);
-    glassLeft.position.set(-1.7, 1.7, 2.45);
-    storeGroup.add(glassLeft);
-
-    // 自动门组
-    const doorGroup = new THREE.Group();
-    const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.6, 0.1), glassMat);
-    doorGlass.position.set(0, 1.5, 0);
-    doorGroup.add(doorGlass);
-
-    const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.6 });
-    const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 0.15), doorFrameMat);
-    doorFrame.position.set(0, 2.85, 0.02);
-    doorGroup.add(doorFrame);
-    const doorFrameLeft = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.7, 0.15), doorFrameMat);
-    doorFrameLeft.position.set(-0.95, 1.45, 0.02);
-    doorGroup.add(doorFrameLeft);
-    const doorFrameRight = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.7, 0.15), doorFrameMat);
-    doorFrameRight.position.set(0.95, 1.45, 0.02);
-    doorGroup.add(doorFrameRight);
-    doorGroup.position.set(1.5, 0, 2.45);
-    storeGroup.add(doorGroup);
-
-    // 下墙
-    const lowerWall = new THREE.Mesh(new THREE.BoxGeometry(6, 0.3, 0.3), wallMat);
-    lowerWall.position.set(0, 0.15, 2.45);
-    lowerWall.castShadow = true;
-    lowerWall.receiveShadow = true;
-    storeGroup.add(lowerWall);
-
-    // 分隔条
-    const dividerMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
-    const divider1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.8, 0.12), dividerMat);
-    divider1.position.set(-0.6, 1.7, 2.46);
-    storeGroup.add(divider1);
-    const divider2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.8, 0.12), dividerMat);
-    divider2.position.set(0.2, 1.7, 2.46);
-    storeGroup.add(divider2);
-
-    // 招牌
-    const signBoardMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, emissive: new THREE.Color(0xffaa55), emissiveIntensity: 1.2, roughness: 0.2
-    });
-    const signBoard = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.7, 0.3), signBoardMat);
-    signBoard.position.set(0, 3.95, 2.4);
-    signBoard.castShadow = true;
-    storeGroup.add(signBoard);
-
-    const signStripeMat = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: new THREE.Color(0xff4400), emissiveIntensity: 1.0 });
-    for (let i = 0; i < 3; i++) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.05), signStripeMat);
-      stripe.position.set(-1.2 + i * 1.2, 3.95, 2.56);
-      storeGroup.add(stripe);
-    }
-
-    const signLampMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: new THREE.Color(0xffaa33), emissiveIntensity: 1.5 });
-    const signLamp = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), signLampMat);
-    signLamp.position.set(1.5, 4.3, 2.3);
-    storeGroup.add(signLamp);
-
-    // 雨棚
-    const awningMat = new THREE.MeshStandardMaterial({ color: 0x2a3a4a, roughness: 0.6 });
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.1, 1.2), awningMat);
-    awning.position.set(0, 3.15, 3.0);
-    awning.castShadow = true;
-    awning.receiveShadow = true;
-    storeGroup.add(awning);
-
-    const pillarMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4 });
-    const pillar1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.1, 6), pillarMat);
-    pillar1.position.set(-2.8, 1.55, 3.4);
-    pillar1.castShadow = true;
-    pillar1.receiveShadow = true;
-    storeGroup.add(pillar1);
-    const pillar2 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.1, 6), pillarMat);
-    pillar2.position.set(2.8, 1.55, 3.4);
-    pillar2.castShadow = true;
-    pillar2.receiveShadow = true;
-    storeGroup.add(pillar2);
-
-    // 注册建筑出现（延迟稍长，因为要“搭建”）
-    // 墙体部分逐个出现
-    const wallParts = [backWall, leftWall, rightWall, roof, glassLeft, doorGroup, lowerWall, divider1, divider2, signBoard, awning, pillar1, pillar2];
-    wallParts.forEach((part, idx) => {
-      if (part === doorGroup) {
-        // 门组单独处理，避免它被隐藏导致玻璃消失？但门组作为整体需要出现
-        registerAppear(part, 1.0 + idx * 0.08, 0.6, 1.2);
-      } else {
-        registerAppear(part, 1.0 + idx * 0.08, 0.6, 1.2);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      if ('outputEncoding' in renderer) renderer.outputEncoding = THREE.sRGBEncoding;
+      if ('toneMapping' in renderer) {
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
       }
-    });
-    // 招牌条纹和灯也加入
-    storeGroup.children.forEach(child => {
-      if (!child.userData.appear && child !== storeGroup) {
-        // 对未注册的，补充注册
-        if (!appearObjects.includes(child) && child.parent === storeGroup) {
-          registerAppear(child, 1.0 + Math.random() * 0.8, 0.5, 0.8);
+      document.body.appendChild(renderer.domElement);
+
+      // ========== 控制器 ==========
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 2.5, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.maxPolarAngle = Math.PI / 2.15;
+      controls.minDistance = 6;
+      controls.maxDistance = 40;
+      controls.update();
+
+      // ========== 灯光 ==========
+      scene.add(new THREE.AmbientLight(0x3f4a66, 0.6));
+
+      const street1 = new THREE.PointLight(0x7d9cd6, 0.9, 32);
+      street1.position.set(5, 8, 5);
+      scene.add(street1);
+
+      const street2 = new THREE.PointLight(0x7d9cd6, 0.6, 25);
+      street2.position.set(-6, 7, -4);
+      scene.add(street2);
+
+      const store1 = new THREE.PointLight(0xffdd99, 1.3, 16);
+      store1.position.set(0, 4, 1.5);
+      scene.add(store1);
+
+      const store2 = new THREE.PointLight(0xffaa66, 1.0, 12);
+      store2.position.set(-2, 4, -1);
+      scene.add(store2);
+
+      const store3 = new THREE.PointLight(0xffaa66, 1.0, 12);
+      store3.position.set(2.5, 4, -1);
+      scene.add(store3);
+
+      const signLight = new THREE.PointLight(0xffaa55, 0.8, 10);
+      signLight.position.set(1.5, 4.5, 3.2);
+      scene.add(signLight);
+
+      const fill = new THREE.DirectionalLight(0xccddff, 0.25);
+      fill.position.set(2, 5, 6);
+      scene.add(fill);
+
+      const rim = new THREE.DirectionalLight(0x556688, 0.4);
+      rim.position.set(-5, 5, -8);
+      scene.add(rim);
+
+      // ========== 组装动画管理 ==========
+      const appearList = [];
+      const ASSEMBLY_DURATION = 4.0;
+      const assemblyStart = performance.now() / 1000;
+
+      function registerAppear(obj, delay, duration, dropHeight) {
+        obj.userData.ap = {
+          delay: delay, duration: duration, drop: dropHeight,
+          oy: obj.position.y,
+          os: obj.scale.clone(),
+          orx: obj.rotation.x, ory: obj.rotation.y, orz: obj.rotation.z
+        };
+        obj.position.y = obj.userData.ap.oy - dropHeight;
+        obj.scale.set(0.001, 0.001, 0.001);
+        obj.visible = false;
+        appearList.push(obj);
+      }
+
+      function updateAssembly(t) {
+        for (const obj of appearList) {
+          const a = obj.userData.ap;
+          if (!a) continue;
+          let p = (t - a.delay / ASSEMBLY_DURATION) / (a.duration / ASSEMBLY_DURATION);
+          p = Math.max(0, Math.min(1, p));
+          const e = 1 - Math.pow(1 - p, 3);
+          obj.position.y = a.oy - a.drop * (1 - e);
+          obj.scale.set(a.os.x * e, a.os.y * e, a.os.z * e);
+          obj.rotation.set(a.orx, a.ory, a.orz);
+          obj.visible = e > 0.001;
         }
       }
-    });
 
-    // 修正：storeGroup本身不需要注册，但子对象已经注册，storeGroup的位置不应改变
-    // 但storeGroup直接添加到scene，它自身位置(0,0,0)不受影响
+      // ========== 底座 ==========
+      const baseGroup = new THREE.Group();
+      scene.add(baseGroup);
 
-    // 内部陈设单独组
-    const interiorGroup = new THREE.Group();
-    storeGroup.add(interiorGroup);
+      const baseMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(14, 0.3, 14),
+        new THREE.MeshStandardMaterial({
+          color: 0x1a1e28, roughness: 0.35, metalness: 0.2,
+          emissive: 0x0a0c10, emissiveIntensity: 0.2
+        })
+      );
+      baseMesh.position.set(0, -0.15, 0);
+      baseMesh.receiveShadow = true;
+      baseMesh.castShadow = true;
+      baseGroup.add(baseMesh);
 
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0xccbbaa, roughness: 0.8, emissive: new THREE.Color(0x443322), emissiveIntensity: 0.2 });
-    const interiorFloor = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.1, 4.8), floorMat);
-    interiorFloor.position.set(0, 0.05, 0);
-    interiorFloor.receiveShadow = true;
-    interiorGroup.add(interiorFloor);
+      const edgePts = [
+        [-7, 0.02, -7], [7, 0.02, -7], [7, 0.02, 7], [-7, 0.02, 7], [-7, 0.02, -7]
+      ].map(p => new THREE.Vector3(p[0], p[1], p[2]));
+      baseGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(edgePts),
+        new THREE.LineBasicMaterial({ color: 0x3a4a6a })
+      ));
 
-    const innerWallMat = new THREE.MeshStandardMaterial({ color: 0xeeddcc, roughness: 0.8 });
-    const innerBack = new THREE.Mesh(new THREE.BoxGeometry(5.8, 3.2, 0.1), innerWallMat);
-    innerBack.position.set(0, 1.7, -2.4);
-    innerBack.receiveShadow = true;
-    interiorGroup.add(innerBack);
+      registerAppear(baseGroup, 0.0, 1.0, 3.0);
+      baseGroup.position.y = -3;
 
-    // 货架
-    const shelfMat = new THREE.MeshStandardMaterial({ color: 0xbbaa99, roughness: 0.7 });
-    const shelf1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 2.5), shelfMat);
-    shelf1.position.set(-2.2, 0.9, -0.5);
-    shelf1.castShadow = true;
-    shelf1.receiveShadow = true;
-    interiorGroup.add(shelf1);
+      // ========== 路面细节 ==========
+      const road = new THREE.Group();
+      scene.add(road);
 
-    const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff];
-    for (let i = 0; i < 12; i++) {
-      const itemMat = new THREE.MeshStandardMaterial({ color: colors[i % colors.length], emissive: new THREE.Color(colors[i % colors.length]).multiplyScalar(0.3) });
-      const item = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.15), itemMat);
-      item.position.set(-2.2 + (Math.random() - 0.5) * 0.5, 0.4 + Math.floor(i / 4) * 0.5, -1.2 + (i % 4) * 0.7);
-      item.castShadow = true;
-      item.receiveShadow = true;
-      interiorGroup.add(item);
-    }
+      const stripeMat = new THREE.MeshStandardMaterial({
+        color: 0xaaccff, emissive: 0x224466, emissiveIntensity: 0.3,
+        transparent: true, opacity: 0.35, roughness: 0.2
+      });
+      for (let i = -1; i <= 1; i++) {
+        const s = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.02, 0.25), stripeMat);
+        s.position.set(i * 2.5, 0.02, 3.5);
+        s.rotation.y = 0.2;
+        road.add(s);
+      }
 
-    const shelf2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 2.5), shelfMat);
-    shelf2.position.set(2.2, 0.9, -0.5);
-    shelf2.castShadow = true;
-    shelf2.receiveShadow = true;
-    interiorGroup.add(shelf2);
-    for (let i = 0; i < 12; i++) {
-      const itemMat = new THREE.MeshStandardMaterial({ color: colors[(i+2) % colors.length], emissive: new THREE.Color(colors[(i+2) % colors.length]).multiplyScalar(0.3) });
-      const item = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.15), itemMat);
-      item.position.set(2.2 + (Math.random() - 0.5) * 0.5, 0.4 + Math.floor(i / 4) * 0.5, -1.2 + (i % 4) * 0.7);
-      item.castShadow = true;
-      item.receiveShadow = true;
-      interiorGroup.add(item);
-    }
+      const drain = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.05, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x445566, roughness: 0.7, metalness: 0.5 })
+      );
+      drain.position.set(4.5, 0.03, -4);
+      road.add(drain);
 
-    // 收银台
-    const counterMat = new THREE.MeshStandardMaterial({ color: 0x886644, roughness: 0.6 });
-    const counter = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 0.8), counterMat);
-    counter.position.set(0, 0.45, -1.6);
-    counter.castShadow = true;
-    counter.receiveShadow = true;
-    interiorGroup.add(counter);
+      const puddleMat = new THREE.MeshStandardMaterial({
+        color: 0x88aadd, emissive: 0x112233, emissiveIntensity: 0.6,
+        transparent: true, opacity: 0.25, roughness: 0.1, metalness: 0.8
+      });
+      [[-3, 2.5], [2.5, -2], [4, 4], [-4.5, -3], [0.5, 4.5]].forEach(([x, z]) => {
+        const p = new THREE.Mesh(new THREE.CircleGeometry(0.7 + Math.random() * 0.5, 8), puddleMat);
+        p.position.set(x, 0.02, z);
+        p.rotation.x = -Math.PI / 2;
+        road.add(p);
+      });
 
-    const registerMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.5 });
-    const register = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4), registerMat);
-    register.position.set(0.5, 1.0, -1.6);
-    register.castShadow = true;
-    register.receiveShadow = true;
-    interiorGroup.add(register);
+      registerAppear(road, 0.2, 0.6, 0.6);
 
-    const coffeeMat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: new THREE.Color(0x442200), emissiveIntensity: 0.5 });
-    const coffee = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.4), coffeeMat);
-    coffee.position.set(-0.6, 0.9, -1.5);
-    coffee.castShadow = true;
-    coffee.receiveShadow = true;
-    interiorGroup.add(coffee);
+      // ========== 便利店建筑 ==========
+      const store = new THREE.Group();
+      scene.add(store);
 
-    // 杂志架
-    const magMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-    const magRack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.15, 0.3), magMat);
-    magRack.position.set(-1.2, 0.5, 1.8);
-    magRack.castShadow = true;
-    magRack.receiveShadow = true;
-    interiorGroup.add(magRack);
-    for (let i = 0; i < 4; i++) {
-      const magColor = colors[i % colors.length];
-      const magItemMat = new THREE.MeshStandardMaterial({ color: magColor, emissive: new THREE.Color(magColor).multiplyScalar(0.2) });
-      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.08), magItemMat);
-      mag.position.set(-1.6 + i * 0.3, 0.65, 1.8);
-      mag.rotation.z = 0.1;
-      mag.castShadow = true;
-      mag.receiveShadow = true;
-      interiorGroup.add(mag);
-    }
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: 0xdddddd, roughness: 0.5, emissive: 0x222222, emissiveIntensity: 0.1
+      });
+      const wallDark = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6 });
+      const glassMat = new THREE.MeshStandardMaterial({
+        color: 0xaaccff, transparent: true, opacity: 0.25, roughness: 0.1, metalness: 0.1,
+        emissive: 0x112233, emissiveIntensity: 0.3, side: THREE.DoubleSide
+      });
 
-    // 饮料柜
-    const coolerMat = new THREE.MeshStandardMaterial({ color: 0x88aacc, emissive: new THREE.Color(0x224466), emissiveIntensity: 0.6 });
-    const cooler = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.0, 0.3), coolerMat);
-    cooler.position.set(-1.2, 1.0, -2.2);
-    cooler.castShadow = true;
-    cooler.receiveShadow = true;
-    interiorGroup.add(cooler);
-    for (let i = 0; i < 6; i++) {
-      const bottleMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0xaaaaaa), emissiveIntensity: 0.5 });
-      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.3, 6), bottleMat);
-      bottle.position.set(-1.8 + i * 0.24, 0.7, -2.05);
-      bottle.castShadow = true;
-      bottle.receiveShadow = true;
-      interiorGroup.add(bottle);
-    }
+      function addPart(mesh, delay) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        store.add(mesh);
+        registerAppear(mesh, delay, 0.6, 1.2);
+        return mesh;
+      }
 
-    // 关东煮柜
-    const hotMat = new THREE.MeshStandardMaterial({ color: 0xaa8866, emissive: new THREE.Color(0x552200), emissiveIntensity: 0.6 });
-    const hotCase = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.5), hotMat);
-    hotCase.position.set(1.2, 0.9, -1.2);
-    hotCase.castShadow = true;
-    hotCase.receiveShadow = true;
-    interiorGroup.add(hotCase);
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(6, 3.5, 0.3), wallDark), 1.0).position.set(0, 1.75, -2.5);
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.5, 5), wallMat), 1.1).position.set(-3, 1.75, 0);
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.5, 5), wallMat), 1.2).position.set(3, 1.75, 0);
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.2, 5.2),
+        new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.7 })), 1.3).position.set(0, 3.6, 0);
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.8, 0.1), glassMat), 1.4).position.set(-1.7, 1.7, 2.45);
 
-    // 内部吊灯
-    const lampMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: new THREE.Color(0xffcc66), emissiveIntensity: 2.0 });
-    const lamp1 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), lampMat);
-    lamp1.position.set(-1.5, 3.0, 0);
-    interiorGroup.add(lamp1);
-    const lamp2 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), lampMat);
-    lamp2.position.set(1.5, 3.0, 0);
-    interiorGroup.add(lamp2);
+      // 自动门
+      const doorGroup = new THREE.Group();
+      const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.6, 0.1), glassMat);
+      doorGlass.position.set(0, 1.5, 0);
+      doorGroup.add(doorGlass);
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.6 });
+      const fTop = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 0.15), frameMat);
+      fTop.position.set(0, 2.85, 0.02);
+      doorGroup.add(fTop);
+      const fL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.7, 0.15), frameMat);
+      fL.position.set(-0.95, 1.45, 0.02);
+      doorGroup.add(fL);
+      const fR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.7, 0.15), frameMat);
+      fR.position.set(0.95, 1.45, 0.02);
+      doorGroup.add(fR);
+      doorGroup.position.set(1.5, 0, 2.45);
+      store.add(doorGroup);
+      registerAppear(doorGroup, 1.5, 0.6, 1.2);
 
-    // 内部元素也注册出现（比外墙稍晚，先有墙再有内部）
-    interiorGroup.children.forEach((child, idx) => {
-      registerAppear(child, 1.6 + idx * 0.04, 0.5, 0.8);
-    });
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(6, 0.3, 0.3), wallMat), 1.6).position.set(0, 0.15, 2.45);
 
-    // ========== 街道元素 ==========
-    // 自动贩卖机
-    const vendingGroup = new THREE.Group();
-    const vendingBodyMat = new THREE.MeshStandardMaterial({ color: 0xcc3333, emissive: new THREE.Color(0x441111), emissiveIntensity: 0.6, roughness: 0.4 });
-    const vendingBody = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.2, 0.8), vendingBodyMat);
-    vendingBody.position.set(0, 1.1, 0);
-    vendingBody.castShadow = true;
-    vendingBody.receiveShadow = true;
-    vendingGroup.add(vendingBody);
+      const divMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.8, 0.12), divMat), 1.7).position.set(-0.6, 1.7, 2.46);
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.8, 0.12), divMat), 1.75).position.set(0.2, 1.7, 2.46);
 
-    const panelMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0xffdd88), emissiveIntensity: 1.0 });
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.1), panelMat);
-    panel.position.set(0, 1.5, 0.45);
-    vendingGroup.add(panel);
-    vendingGroup.position.set(4.2, 0, 1.5);
-    vendingGroup.rotation.y = -0.2;
-    scene.add(vendingGroup);
-    registerAppear(vendingGroup, 2.2, 0.6, 1.5);
+      // 招牌
+      const signBoardMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, emissive: 0xffaa55, emissiveIntensity: 1.2, roughness: 0.2
+      });
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.7, 0.3), signBoardMat), 1.85).position.set(0, 3.95, 2.4);
 
-    // 自行车
-    const bikeGroup = new THREE.Group();
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x3366aa, roughness: 0.5 });
-    const wheelGeo = new THREE.TorusGeometry(0.35, 0.05, 8, 16);
-    const wheel1 = new THREE.Mesh(wheelGeo, wheelMat);
-    wheel1.position.set(0.5, 0.35, 0);
-    wheel1.rotation.x = Math.PI / 2;
-    wheel1.castShadow = true;
-    wheel1.receiveShadow = true;
-    bikeGroup.add(wheel1);
-    const wheel2 = new THREE.Mesh(wheelGeo, wheelMat);
-    wheel2.position.set(-0.5, 0.35, 0);
-    wheel2.rotation.x = Math.PI / 2;
-    wheel2.castShadow = true;
-    wheel2.receiveShadow = true;
-    bikeGroup.add(wheel2);
-    const frameBar = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, 0.08), frameMat);
-    frameBar.position.set(0, 0.5, 0);
-    frameBar.castShadow = true;
-    frameBar.receiveShadow = true;
-    bikeGroup.add(frameBar);
-    const frameBar2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.6, 0.08), frameMat);
-    frameBar2.position.set(0.2, 0.6, 0);
-    frameBar2.castShadow = true;
-    frameBar2.receiveShadow = true;
-    bikeGroup.add(frameBar2);
-    bikeGroup.position.set(-4.5, 0, 2.8);
-    bikeGroup.rotation.y = 0.5;
-    scene.add(bikeGroup);
-    registerAppear(bikeGroup, 2.5, 0.5, 1.2);
+      const stripeMat2 = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0xff4400, emissiveIntensity: 1.0 });
+      for (let i = 0; i < 3; i++) {
+        addPart(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.05), stripeMat2), 1.95 + i * 0.05)
+          .position.set(-1.2 + i * 1.2, 3.95, 2.56);
+      }
 
-    // 路灯
-    const streetLampGroup = new THREE.Group();
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.7 });
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 5.0, 8), poleMat);
-    pole.position.set(0, 2.5, 0);
-    pole.castShadow = true;
-    pole.receiveShadow = true;
-    streetLampGroup.add(pole);
-    const lampHeadMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-    const lampHead = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), lampHeadMat);
-    lampHead.position.set(0, 5.0, 0.2);
-    lampHead.castShadow = true;
-    streetLampGroup.add(lampHead);
-    const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffeedd, emissive: new THREE.Color(0xffeeaa), emissiveIntensity: 2.0 });
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 6), bulbMat);
-    bulb.position.set(0, 5.0, 0.2);
-    streetLampGroup.add(bulb);
-    streetLampGroup.position.set(-5.5, 0, -4.5);
-    scene.add(streetLampGroup);
-    registerAppear(streetLampGroup, 2.0, 0.7, 2.0);
+      addPart(new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6),
+        new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffaa33, emissiveIntensity: 1.5 })), 2.1)
+        .position.set(1.5, 4.3, 2.3);
 
-    // 电线杆
-    const utilityPoleGroup = new THREE.Group();
-    const utilPoleMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.6 });
-    const utilPole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 6.0, 6), utilPoleMat);
-    utilPole.position.set(0, 3.0, 0);
-    utilPole.castShadow = true;
-    utilPole.receiveShadow = true;
-    utilityPoleGroup.add(utilPole);
-    const crossMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-    const cross1 = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.08), crossMat);
-    cross1.position.set(0, 5.2, 0);
-    cross1.castShadow = true;
-    utilityPoleGroup.add(cross1);
-    const cross2 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.08), crossMat);
-    cross2.position.set(0, 4.5, 0);
-    cross2.castShadow = true;
-    utilityPoleGroup.add(cross2);
-    utilityPoleGroup.position.set(5.8, 0, -3.5);
-    scene.add(utilityPoleGroup);
-    registerAppear(utilityPoleGroup, 2.8, 0.7, 2.0);
+      // 雨棚
+      addPart(new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.1, 1.2),
+        new THREE.MeshStandardMaterial({ color: 0x2a3a4a, roughness: 0.6 })), 2.15).position.set(0, 3.15, 3.0);
 
-    // 电线
-    const points1 = [
-      new THREE.Vector3(5.8, 5.2, -3.5), new THREE.Vector3(3.5, 4.8, -2.0),
-      new THREE.Vector3(0.0, 4.5, -1.0), new THREE.Vector3(-2.5, 4.7, 1.0),
-      new THREE.Vector3(-5.5, 5.0, 2.0)
-    ];
-    const curve1 = new THREE.CatmullRomCurve3(points1);
-    const tubeGeo1 = new THREE.TubeGeometry(curve1, 20, 0.03, 6, false);
-    const tubeMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-    const tube1 = new THREE.Mesh(tubeGeo1, tubeMat);
-    tube1.castShadow = true;
-    tube1.receiveShadow = true;
-    scene.add(tube1);
-    registerAppear(tube1, 3.3, 0.5, 1.0);
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4 });
+      addPart(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.1, 6), pillarMat), 2.2).position.set(-2.8, 1.55, 3.4);
+      addPart(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.1, 6), pillarMat), 2.25).position.set(2.8, 1.55, 3.4);
 
-    // 路牌
-    const signPostMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-    const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6), signPostMat);
-    signPost.position.set(-2.5, 1.25, 4.2);
-    signPost.castShadow = true;
-    signPost.receiveShadow = true;
-    scene.add(signPost);
-    registerAppear(signPost, 2.4, 0.5, 1.2);
+      // ========== 店内 ==========
+      const inside = new THREE.Group();
+      store.add(inside);
 
-    const signPlateMat = new THREE.MeshStandardMaterial({ color: 0x4477aa, emissive: new THREE.Color(0x112233), emissiveIntensity: 0.3 });
-    const signPlate = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.4, 0.05), signPlateMat);
-    signPlate.position.set(-2.5, 2.3, 4.2);
-    signPlate.castShadow = true;
-    signPlate.receiveShadow = true;
-    scene.add(signPlate);
-    registerAppear(signPlate, 2.6, 0.4, 0.8);
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0xccbbaa, roughness: 0.8, emissive: 0x443322, emissiveIntensity: 0.2 });
+      const inFloor = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.1, 4.8), floorMat);
+      inFloor.position.set(0, 0.05, 0);
+      inFloor.receiveShadow = true;
+      inside.add(inFloor);
 
-    // 垃圾桶
-    const trashMat = new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.6 });
-    const trash = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.7, 8), trashMat);
-    trash.position.set(4.0, 0.35, 3.8);
-    trash.castShadow = true;
-    trash.receiveShadow = true;
-    scene.add(trash);
-    registerAppear(trash, 2.3, 0.5, 1.0);
+      const inWall = new THREE.Mesh(new THREE.BoxGeometry(5.8, 3.2, 0.1),
+        new THREE.MeshStandardMaterial({ color: 0xeeddcc, roughness: 0.8 }));
+      inWall.position.set(0, 1.7, -2.4);
+      inside.add(inWall);
 
-    // 雨伞架
-    const umbrellaMat = new THREE.MeshStandardMaterial({ color: 0x666666 });
-    const umbrellaStand = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.4), umbrellaMat);
-    umbrellaStand.position.set(2.8, 0.05, 3.0);
-    umbrellaStand.castShadow = true;
-    umbrellaStand.receiveShadow = true;
-    scene.add(umbrellaStand);
-    registerAppear(umbrellaStand, 2.2, 0.4, 0.5);
-    for (let i = 0; i < 3; i++) {
-      const umbMat = new THREE.MeshStandardMaterial({ color: 0x3355aa });
-      const umb = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 6), umbMat);
-      umb.position.set(2.6 + i * 0.2, 0.5, 3.0);
-      umb.rotation.z = 0.1;
-      umb.castShadow = true;
-      umb.receiveShadow = true;
-      scene.add(umb);
-      registerAppear(umb, 2.4 + i * 0.1, 0.4, 0.8);
-    }
+      const shelfMat = new THREE.MeshStandardMaterial({ color: 0xbbaa99, roughness: 0.7 });
+      const shelfColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff];
 
-    // 地垫
-    const matMat = new THREE.MeshStandardMaterial({ color: 0x445566, roughness: 0.9 });
-    const doorMat = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.8), matMat);
-    doorMat.position.set(1.5, 0.03, 3.3);
-    doorMat.receiveShadow = true;
-    scene.add(doorMat);
-    registerAppear(doorMat, 2.0, 0.4, 0.3);
+      const sh1 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 2.5), shelfMat);
+      sh1.position.set(-2.2, 0.9, -0.5);
+      sh1.castShadow = true;
+      inside.add(sh1);
 
-    // 小巷标识
-    const alleySignMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: new THREE.Color(0xffaa00), emissiveIntensity: 0.3 });
-    const alleySign = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.05), alleySignMat);
-    alleySign.position.set(-4.0, 2.0, -3.5);
-    alleySign.castShadow = true;
-    scene.add(alleySign);
-    registerAppear(alleySign, 2.7, 0.4, 0.8);
+      for (let i = 0; i < 12; i++) {
+        const c = shelfColors[i % shelfColors.length];
+        const item = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.15),
+          new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.3 }));
+        item.position.set(-2.2 + (Math.random() - 0.5) * 0.5, 0.4 + Math.floor(i / 4) * 0.5, -1.2 + (i % 4) * 0.7);
+        item.castShadow = true;
+        inside.add(item);
+      }
 
-    // 空调外机
-    const acMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.6 });
-    const ac = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 0.6), acMat);
-    ac.position.set(-4.2, 0.5, -2.0);
-    ac.castShadow = true;
-    ac.receiveShadow = true;
-    scene.add(ac);
-    registerAppear(ac, 2.1, 0.5, 1.0);
+      const sh2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 2.5), shelfMat);
+      sh2.position.set(2.2, 0.9, -0.5);
+      sh2.castShadow = true;
+      inside.add(sh2);
 
-    // 公告栏
-    const boardMat = new THREE.MeshStandardMaterial({ color: 0x886644 });
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.08), boardMat);
-    board.position.set(3.8, 1.2, 3.8);
-    board.castShadow = true;
-    board.receiveShadow = true;
-    scene.add(board);
-    registerAppear(board, 2.5, 0.5, 1.0);
+      for (let i = 0; i < 12; i++) {
+        const c = shelfColors[(i + 2) % shelfColors.length];
+        const item = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.15),
+          new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.3 }));
+        item.position.set(2.2 + (Math.random() - 0.5) * 0.5, 0.4 + Math.floor(i / 4) * 0.5, -1.2 + (i % 4) * 0.7);
+        item.castShadow = true;
+        inside.add(item);
+      }
 
-    const posterMat = new THREE.MeshStandardMaterial({ color: 0xffaa88, emissive: new THREE.Color(0x442211), emissiveIntensity: 0.4 });
-    const poster = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.02), posterMat);
-    poster.position.set(3.8, 1.3, 3.85);
-    scene.add(poster);
-    registerAppear(poster, 2.7, 0.4, 0.6);
+      const counter = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.9, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x886644, roughness: 0.6 }));
+      counter.position.set(0, 0.45, -1.6);
+      counter.castShadow = true;
+      inside.add(counter);
 
-    // 护栏
-    const railMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.5 });
-    for (let i = 0; i < 3; i++) {
-      const railPost = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 6), railMat);
-      railPost.position.set(-4.5 + i * 0.8, 0.5, 4.5);
-      railPost.castShadow = true;
-      railPost.receiveShadow = true;
-      scene.add(railPost);
-      registerAppear(railPost, 2.3 + i * 0.1, 0.4, 0.8);
-    }
-    const railBar = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.08), railMat);
-    railBar.position.set(-3.7, 0.9, 4.5);
-    railBar.castShadow = true;
-    railBar.receiveShadow = true;
-    scene.add(railBar);
-    registerAppear(railBar, 2.6, 0.4, 0.6);
+      const reg = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.5 }));
+      reg.position.set(0.5, 1.0, -1.6);
+      reg.castShadow = true;
+      inside.add(reg);
 
-    // 交通信号灯
-    const trafficLightGroup = new THREE.Group();
-    const tlPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6), new THREE.MeshStandardMaterial({ color: 0x666666 }));
-    tlPole.position.set(0, 1.25, 0);
-    tlPole.castShadow = true;
-    trafficLightGroup.add(tlPole);
-    const tlBox = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-    tlBox.position.set(0, 2.4, 0.1);
-    trafficLightGroup.add(tlBox);
-    const tlRedMat = new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: new THREE.Color(0xff0000), emissiveIntensity: 1.0 });
-    const tlGreenMat = new THREE.MeshStandardMaterial({ color: 0x33ff33, emissive: new THREE.Color(0x00ff00), emissiveIntensity: 1.0 });
-    const tlRed = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), tlRedMat);
-    tlRed.position.set(-0.12, 2.4, 0.2);
-    trafficLightGroup.add(tlRed);
-    const tlGreen = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), tlGreenMat);
-    tlGreen.position.set(0.12, 2.4, 0.2);
-    trafficLightGroup.add(tlGreen);
-    trafficLightGroup.position.set(-7.5, 0, 0.5);
-    scene.add(trafficLightGroup);
-    registerAppear(trafficLightGroup, 3.0, 0.6, 1.8);
+      const coffee = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x442200, emissiveIntensity: 0.5 }));
+      coffee.position.set(-0.6, 0.9, -1.5);
+      coffee.castShadow = true;
+      inside.add(coffee);
 
-    // ========== 雨和动态元素 ==========
-    // 雨粒子（不参与组装动画，一直存在）
-    const rainCount = 1200;
-    const rainGeo = new THREE.BufferGeometry();
-    const rainPositions = new Float32Array(rainCount * 3
+      const magRack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.15, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0xcccccc }));
+      magRack.position.set(-1.2, 0.5, 1.8);
+      magRack.castShadow = true;
+      inside.add(magRack);
+
+      for (let i = 0; i < 4; i++) {
+        const c = shelfColors[i % shelfColors.length];
+        const mag = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.08),
+          new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.2 }));
+        mag.position.set(-1.6 + i * 0.3, 0.65, 1.8);
+        mag.rotation.z = 0.1;
+        mag.castShadow = true;
+        inside.add(mag);
+      }
+
+      const cooler = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.0, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x88aacc, emissive: 0x224466, emissiveIntensity: 0.6 }));
+      cooler.position.set(-1.2, 1.0, -2.2);
+      cooler.castShadow = true;
+      inside.add(cooler);
+
+      for (let i = 0; i < 6; i++) {
+        const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.3, 6),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xaaaaaa, emissiveIntensity: 0.5 }));
+        bottle.position.set(-1.8 + i * 0.24, 0.7, -2.05);
+        bottle.castShadow = true;
+        inside.add(bottle);
+      }
+
+      const hot = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0xaa8866, emissive: 0x552200, emissiveIntensity: 0.6 }));
+      hot.position.set(1.2, 0.9, -1.2);
+      hot.castShadow = true;
+      inside.add(hot);
+
+      const lampMat = new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffcc66, emissiveIntensity: 2.0 });
+      const lamp1 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), lampMat);
+      lamp1.position.set(-1.5, 3.0, 0);
+      inside.add(lamp1);
+      const lamp2 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), lampMat);
+      lamp2.position.set(1.5, 3.0, 0);
+      inside.add(lamp2);
+
+      // 店内元素逐个出现
+      inside.children.forEach((child, idx) => {
+        registerAppear(child, 1.7 + idx * 0.03, 0.5, 0.7);
+      });
+
+      // ========== 街道元素 ==========
+      function addStreet(mesh, delay, drop) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        registerAppear(mesh, delay, 0.6, drop);
+        return mesh;
+      }
+
+      // 自动贩卖机
+      const vm = new THREE.Group();
+      vm.add(new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.2, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0xcc3333, emissive: 0x441111, emissiveIntensity: 0.6, roughness: 0.4 })));
+      vm.children[0].position.y = 1.1;
+      vm.children[0].castShadow = true;
+      const vmPanel = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.1),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffdd88, emissiveIntensity: 1.0 }));
+      vmPanel.position.set(0, 1.5, 0.45);
+      vm.add(vmPanel);
+      vm.position.set(4.2, 0, 1.5);
+      vm.rotation.y = -0.2;
+      scene.add(vm);
+      registerAppear(vm, 2.3, 0.6, 1.5);
+
+      // 自行车
+      const bike = new THREE.Group();
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x3366aa, roughness: 0.5 });
+      const wheelGeo = new THREE.TorusGeometry(0.35, 0.05, 8, 16);
+      const w1 = new THREE.Mesh(wheelGeo, wheelMat);
+      w1.position.set(0.5, 0.35, 0);
+      w1.rotation.x = Math.PI / 2;
+      bike.add(w1);
+      const w2 = new THREE.Mesh(wheelGeo, wheelMat);
+      w2.position.set(-0.5, 0.35, 0);
+      w2.rotation.x = Math.PI / 2;
+      bike.add(w2);
+      const fb = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, 0.08), frameMat);
+      fb.position.set(0, 0.5, 0);
+      bike.add(fb);
+      const fb2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.6, 0.08), frameMat);
+      fb2.position.set(0.2, 0.6, 0);
+      bike.add(fb2);
+      bike.position.set(-4.5, 0, 2.8);
+      bike.rotation.y = 0.5;
+      scene.add(bike);
+      registerAppear(bike, 2.5, 0.6, 1.2);
+
+      // 路灯
+      const lamp = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 5.0, 8),
+        new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.7 }));
+      pole.position.y = 2.5;
+      lamp.add(pole);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0x333333 }));
+      head.position.set(0, 5.0, 0.2);
+      lamp.add(head);
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 6),
+        new THREE.MeshStandardMaterial({ color: 0xffeedd, emissive: 0xffeeaa, emissiveIntensity: 2.0 }));
+      bulb.position.set(0, 5.0, 0.2);
+      lamp.add(bulb);
+      lamp.position.set(-5.5, 0, -4.5);
+      scene.add(lamp);
+      registerAppear(lamp, 2.0, 0.7, 2.0);
+
+      // 电线杆
+      const upole = new THREE.Group();
+      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 6.0, 6),
+        new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.6 }));
+      up.position.y = 3.0;
+      upole.add(up);
+      const cm = new THREE.MeshStandardMaterial({ color: 0x555555 });
+      const c1 = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.08), cm);
+      c1.position.y = 5.2;
+      upole.add(c1);
+      const c2 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.08), cm);
+      c2.position.y = 4.5;
+      upole.add(c2);
+      upole.position.set(5.8, 0, -3.5);
+      scene.add(upole);
+      registerAppear(upole, 2.8, 0.7, 2.0);
+
+      // 电线
+      const wireCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(5.8, 5.2, -3.5),
+        new THREE.Vector3(3.5, 4.8, -2.0),
+        new THREE.Vector3(0, 4.5, -1.0),
+        new THREE.Vector3(-2.5, 4.7, 1.0),
+        new THREE.Vector3(-5.5, 5.0, 2.0)
+      ]);
+      const wire = new THREE.Mesh(
+        new THREE.TubeGeometry(wireCurve, 20, 0.03, 6, false),
+        new THREE.MeshStandardMaterial({ color: 0x333333 })
+      );
+      wire.castShadow = true;
+      scene.add(wire);
+      registerAppear(wire, 3.3, 0.6, 1.0);
+
+      // 路牌
+      const sp = addStreet(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6),
+        new THREE.MeshStandardMaterial({ color: 0xcccccc })), 2.4, 1.2);
+      sp.position.set(-2.5, 1.25, 4.2);
+
+      const splate = addStreet(new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.4, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0x4477aa, emissive: 0x112233, emissiveIntensity: 0.3 })), 2.55, 0.8);
+      splate.position.set(-2.5, 2.3, 4.2);
+
+      // 垃圾桶
+      const trash = addStreet(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.7, 8),
+        new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.6 })), 2.35, 1.0);
+      trash.position.set(4.0, 0.35, 3.8);
+
+      // 雨伞架
+      const ustand = addStreet(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x666666 })), 2.25, 0.5);
+      ustand.position.set(2.8, 0.05, 3.0);
+
+      for (let i = 0; i < 3; i++) {
+        const u = addStreet(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 6),
+          new THREE.MeshStandardMaterial({ color: 0x3355aa })), 2.45 + i * 0.08, 0.8);
+        u.position.set(2.6 + i * 0.2, 0.5, 3.0);
+        u.rotation.z = 0.1;
+      }
+
+      // 地垫
+      const dmat = addStreet(new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x445566, roughness: 0.9 })), 2.05, 0.3);
+      dmat.position.set(1.5, 0.03, 3.3);
+
+      // 小巷标识
+      const alley = addStreet(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffaa00, emissiveIntensity: 0.3 })), 2.7, 0.8);
+      alley.position.set(-4.0, 2.0, -3.5);
+
+      // 空调外机
+      const ac = addStreet(new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.6 })), 2.15, 1.0);
+      ac.position.set(-4.2, 0.5, -2.0);
+
+      // 公告栏
+      const board = addStreet(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x886644 })), 2.5, 1.0);
+      board.position.set(3.8, 1.2, 3.8);
+
+      const poster = addStreet(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.02),
+        new THREE.MeshStandardMaterial({ color: 0xffaa88, emissive: 0x442211, emissiveIntensity: 0.4 })), 2.65, 0.6);
+      poster.position.set(3.8, 1.3, 3.85);
+
+      // 护栏
+      const railMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.5 });
+      for (let i = 0; i < 3; i++) {
+        const rp = addStreet(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 6), railMat), 2.3 + i * 0.1, 0.8);
+        rp.position.set(-4.5 + i * 0.8, 0.5, 4.5);
+      }
+      const rb = addStreet(new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.08), railMat), 2.6, 0.6);
+      rb.position.set(-3.7, 0.9, 4.5);
+
+      // 停车位标线
+      const plMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, transparent: true, opacity: 0.4 });
+      const pl
